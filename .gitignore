@@ -1,0 +1,48 @@
+# Models (large binary files)
+model/
+
+# Screenshots / media folder
+ss/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+.env
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# ChromaDB local vector store
+chroma_db/
+
+# Uploads & Media
+uploaded_pdfs/
+captions/
+temp_*.pdf
+static/videos/
+*.mp4
+*.m4a
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Databases and Backups
+*.db
+*.sqlite3
+*.db-journal
+*.bak
+*.json.bak
+
+# App-specific transient files
+student_interactions.json
+test
+test_system
+
+# OS
+.DS_Store
+Thumbs.db

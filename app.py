@@ -4,6 +4,8 @@ from backend import (
     process_and_save_pdf, 
     query_saved_document, 
     get_available_documents,
+    delete_document,
+    get_document_path,
     save_video,
     save_caption_file,
     load_caption_file,
@@ -11,7 +13,6 @@ from backend import (
     get_available_videos,
     delete_video,
     get_document_stats,
-    preload_ollama_model,
     preload_ollama_model,
     query_saved_document_stream,
     transcribe_audio,
@@ -42,7 +43,7 @@ import re
 
 # PAGE CONFIGURATION
 st.set_page_config(
-    page_title="NFS", 
+    page_title="Edubridge", 
     layout="wide",
     page_icon="📚",
     initial_sidebar_state="expanded"
@@ -232,16 +233,14 @@ def is_valid_email(email: str) -> bool:
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
-def authenticate_admin(username: str, password: str) -> bool:
-    """Authenticate administrator."""
-    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+# Removed legacy authenticate_admin
 
 def show_auth_page():
     """Display authentication page."""
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.title("📚 NFS")
+        st.title("📚 Edubridge")
         st.caption("AI-Powered Teaching Assistant")
         st.markdown("---")
         if not st.session_state.show_signup:
@@ -329,14 +328,10 @@ def show_admin_login():
             col_a, col_b = st.columns(2)
             with col_a:
                 if st.form_submit_button("🔓 Login as Admin", type="primary", use_container_width=True):
-                    if authenticate_admin(username, password):
+                    success, user_data = authenticate_user(username, password)
+                    if success and user_data['role'] == 'admin':
                         st.session_state.authenticated = True
-                        st.session_state.user_data = {
-                            'username': 'administrator',
-                            'role': 'admin',
-                            'name': 'Administrator',
-                            'email': 'admin@system.local'
-                        }
+                        st.session_state.user_data = user_data
                         st.success("✅ Admin access granted")
                         st.rerun()
                     else:
@@ -524,13 +519,21 @@ with tab1:
                 st.subheader("Upload PDF")
                 pdf = st.file_uploader("Choose PDF", type="pdf", key="pdf_up")
                 if pdf:
-                    with st.spinner("Processing..."):
-                        success, msg = process_and_save_pdf(pdf)
+                    # Guard: only process each file once per session
+                    if 'processed_pdfs' not in st.session_state:
+                        st.session_state.processed_pdfs = set()
+                    
+                    pdf_key = f"{pdf.name}_{pdf.size}"
+                    if pdf_key not in st.session_state.processed_pdfs:
+                        with st.spinner("Processing PDF... please wait"):
+                            success, msg = process_and_save_pdf(pdf)
                         if success:
+                            st.session_state.processed_pdfs.add(pdf_key)
                             st.success(msg)
-                            st.rerun()
                         else:
                             st.error(msg)
+                    else:
+                        st.success(f"✅ '{pdf.name}' already processed.")
             else:
                 st.subheader("Available Documents")
                 docs = get_available_documents()
@@ -544,13 +547,21 @@ with tab1:
                 st.subheader("Upload Video")
                 vid = st.file_uploader("Choose Video", type=["mp4", "avi", "mov"], key="vid_up")
                 if vid:
-                    with st.spinner("Saving..."):
-                        success, msg, path = save_video(vid)
+                    # Guard: only save each video once per session
+                    if 'processed_videos' not in st.session_state:
+                        st.session_state.processed_videos = set()
+                    
+                    vid_key = f"{vid.name}_{vid.size}"
+                    if vid_key not in st.session_state.processed_videos:
+                        with st.spinner("Saving video..."):
+                            success, msg, path = save_video(vid)
                         if success:
+                            st.session_state.processed_videos.add(vid_key)
                             st.success(msg)
-                            st.rerun()
                         else:
                             st.error(msg)
+                    else:
+                        st.success(f"✅ '{vid.name}' already saved.")
                 
                 st.markdown("---")
             
@@ -572,11 +583,29 @@ with tab1:
         if st3:
             with st3:
                 st.subheader("Delete Content")
+                
+                # Delete Documents
                 docs = get_available_documents()
                 if docs:
-                    sel = st.selectbox("Document:", docs, key="del_sel")
+                    st.markdown("**Documents**")
+                    sel = st.selectbox("Select PDF to remove:", docs, key="del_sel")
                     if st.button("🗑️ Delete Document"):
                         success, msg = delete_document(sel)
+                        if success:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+                            
+                st.markdown("---")
+                
+                # Delete Videos
+                vids = get_available_videos()
+                if vids:
+                    st.markdown("**Videos**")
+                    vid_sel = st.selectbox("Select Video to remove:", [v['name'] for v in vids], key="vid_del_sel")
+                    if st.button("🗑️ Delete Video"):
+                        success, msg = delete_video(vid_sel)
                         if success:
                             st.success(msg)
                             st.rerun()
@@ -594,6 +623,21 @@ with tab1:
             stats = get_document_stats(sel)
             if stats:
                 st.caption(f"Type: {stats.get('type','PDF')} | Pages: {stats.get('page_count','N/A')}")
+                
+            pdf_path = get_document_path(sel)
+            if pdf_path and os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as pdf_file:
+                    pdf_bytes = pdf_file.read()
+                    
+                st.download_button(
+                    label="⬇️ Download Source PDF",
+                    data=pdf_bytes,
+                    file_name=f"{sel}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+                
+
         else:
              sel = None
              st.info("No documents available.")
@@ -670,12 +714,7 @@ with tab1:
                 else:
                     transcribed_text = data.get("text", "").strip()
                     
-                    # Translate to English BEFORE sending to LLM/RAG
-                    if lang_code != "en" and transcribed_text:
-                        with st.spinner("🌍 Translating..."):
-                            from backend import translate_to_english
-                            transcribed_text = translate_to_english(transcribed_text, lang_code)
-                    
+
                     query = transcribed_text
         
         if query:
@@ -710,8 +749,21 @@ with tab1:
                     """, unsafe_allow_html=True)
                 
                 try:
+                    # Map UI selection to language codes
+                    lang_map = {
+                        "EN": "en",
+                        "HI": "hi",
+                        "ML": "ml"
+                    }
+
+                    forced_lang = lang_map.get(voice_lang, "en")
+
                     # Stream the response
-                    for chunk in query_saved_document_stream(sel, query):
+                    for chunk in query_saved_document_stream(
+                        sel, 
+                        query,
+                        forced_language=forced_lang
+                    ):
                         # check if chunk is a dictionary (sources)
                         if isinstance(chunk, dict) and 'sources' in chunk:
                             sources = chunk['sources']

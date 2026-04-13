@@ -6,14 +6,19 @@ transformers>=4.30.0
 torch>=2.0.0
 nltk>=3.8.0
 
-# PDF processing
+# PDF processing & OCR
 PyMuPDF>=1.23.0
+pdf2image>=1.16.3
+pytesseract>=0.3.10
+Pillow>=10.0.0
 
 # Audio transcription
 openai-whisper>=20231117  # English
 transformers>=4.30.0      # Hindi/Malayalam (Hugging Face pipeline)
 librosa>=0.10.0          # Audio loading for HF pipeline
 scipy>=1.10.0            # Audio processing
+sounddevice>=0.4.6       # Mic recording (Malayalam)
+soundfile>=0.12.1        # WAV file writing (Malayalam)
 
 # Language detection and translation
 langdetect>=1.0.9
@@ -26,9 +31,5 @@ pathlib>=1.0.1
 # Optional: For better performance
 accelerate>=0.20.0
 paper-qa>=0.3.0
-chromadb>=0.3.21
-sentence-transformers>=2.2.0
 fitz  # or pymupdf
-nltk>=3.8
-numpy>=1.21.0
 requests>=2.31.0
